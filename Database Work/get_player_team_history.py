@@ -4,16 +4,6 @@ import psycopg2;
 import os;
 from dotenv import load_dotenv;
 
-load_dotenv()
-user= os.getenv('POSTGRES_USER')
-password = os.getenv('POSTGRES_PASSWORD')
-con = psycopg2.connect(user=user, password=password)
-cur = con.cursor()
-cur.execute("CREATE TABLE test(id serial PRIMARY KEY, num integer, data varchar);")
-cur.execute("INSERT INTO test (num, data) VALUES (%s, %s)",(100, "abc'def"))
-cur.execute("SELECT * FROM test;")
-print(cur.fetchone())
-
 def get_team_ids():
     """
     Get the IDs of all teams in MLB to use with the MLB-StatsAPI
@@ -315,21 +305,36 @@ def get_valid_season_dates():
     )
     valid_dates[2024] = valid_dates_2024
 
+    for val in valid_dates.keys():
+        cur.execute("INSERT INTO valid_season_dates (year, start_date, end_date) VALUES (%s, %s, %s)", (val, valid_dates[val][0], valid_dates[val][1]))
 
+        
 
-
-    
-
-
-    
-
-    
 
 
 
 
     
 
+
+    
+
+    
+
+
+
+
+    
+load_dotenv()
+user= os.getenv('POSTGRES_USER')
+password = os.getenv('POSTGRES_PASSWORD')
+con = psycopg2.connect(user=user, password=password)
+cur = con.cursor()
+cur.execute("CREATE TABLE valid_season_dates(year integer PRIMARY KEY, start_date date, end_date date);")
+get_valid_season_dates()
+con.commit()  # Commit the transaction to save the changes
+cur.execute("SELECT * FROM valid_season_dates;")
+print(cur.fetchall())
 #teammates = {}
 #players_checked = set()
 #history = get_team_history(116539)
