@@ -7,5 +7,5 @@ mlb_teams = statsapi.get('teams',{'sportIds':1,'activeStatus':'Yes','fields':'te
 all_teams = mlb_teams["teams"]
 
 for team in all_teams:
-    print(statsapi.roster(team["id"]))
+    print(type(statsapi.roster(team["id"])))
     
