@@ -85,8 +85,16 @@ def get_teammates_by_team_history(team_history, teammates):
     return teammates
 
 def get_player_id(name_query):
-    print( statsapi.lookup_player(name_query[0], gameType="R", season=name_query[1], sportId=1))
-    return statsapi.lookup_player(name_query[0], gameType="R", season=name_query[1], sportId=1)[0]['id']
+    player_return = statsapi.lookup_player(name_query[0], gameType="R", season=name_query[1], sportId=1)
+    #If only one unique player is returned from the query
+    if len(player_return) == 1:
+        return player_return[0]['id']
+    #If multiple players are returned by the query, ie same name, have the user manually select which one they want
+    else:
+        for index, entry in enumerate(player_return):
+            print("Player at index", index, " : ", entry)
+        index_entry = int(input(("Type the index of the player you want:")))
+        return player_return[index_entry]['id']
 
 def get_daily_active_roster_as_set(team_id, date, teammates):
     team_roster = set()
@@ -128,6 +136,16 @@ def fill_teammates_for_season(opening_day, last_day, teammates, players_checked)
                 print("Finished", player, "at ", datetime.datetime.now())
     return teammates, players_checked
 
-name_query = ("Aaron Judge", 2025)
-returnting = get_player_id(name_query)
-print(returnting)
+
+load_dotenv()
+user= os.getenv('POSTGRES_USER')
+password = os.getenv('POSTGRES_PASSWORD')
+con = psycopg2.connect(user=user, password=password)
+cur = con.cursor()
+
+cur.execute("CREATE TABLE Teams (team_id serial PRIMARY KEY, team_name varchar NOT NULL);")
+cur.execute("CREATE TABLE MLB_Players(player_id integer PRIMARY KEY, name varchar NOT NULL, position varchar NOT NULL, number varchar NOT NULL);")
+cur.execute("CREATE TABLE Player_Team_Join (player_id integer, team_id integer, start_date DATE, end_date DATE, PRIMARY KEY(player_id, team_id), FOREIGN KEY (player_id) REFERENCES MLB_Players(player_id), FOREIGN KEY (team_id) REFERENCES Teams(team_id));")
+cur.execute("CREATE TABLE Teammates(player_id integer, teammate_id integer, PRIMARY KEY (player_id, teammate_id), FOREIGN KEY (player_id) REFERENCES MLB_Players(player_id), FOREIGN KEY (teammate_id) REFERENCES MLB_Players(player_id));")
+
+con.commit()  # Commit the transaction to save the changes
