@@ -136,16 +136,20 @@ def fill_teammates_for_season(opening_day, last_day, teammates, players_checked)
                 print("Finished", player, "at ", datetime.datetime.now())
     return teammates, players_checked
 
+def populate_database ():
+    load_dotenv()
+    user= os.getenv('POSTGRES_USER')
+    password = os.getenv('POSTGRES_PASSWORD')
+    con = psycopg2.connect(user=user, password=password)
+    cur = con.cursor()
+    season = 2024
+    while season > 1989:
+        cur.execute("SELECT start_date,end_date from valid_season_dates WHERE year = %s", (year,))
+        valid_dates = cur.fetchall() 
+        opening_day = valid_dates[0][0]
+        last_day = valid_dates[0][1]
+        fill_teammates_for_season(opening_day, last_day)
+        season -= 1
+    con.commit()  # Commit the transaction to save the changes\
 
-load_dotenv()
-user= os.getenv('POSTGRES_USER')
-password = os.getenv('POSTGRES_PASSWORD')
-con = psycopg2.connect(user=user, password=password)
-cur = con.cursor()
-
-cur.execute("CREATE TABLE Teams (team_id serial PRIMARY KEY, team_name varchar NOT NULL);")
-cur.execute("CREATE TABLE MLB_Players(player_id integer PRIMARY KEY, name varchar NOT NULL, position varchar NOT NULL, number varchar NOT NULL);")
-cur.execute("CREATE TABLE Player_Team_Join (player_id integer, team_id integer, start_date DATE, end_date DATE, PRIMARY KEY(player_id, team_id), FOREIGN KEY (player_id) REFERENCES MLB_Players(player_id), FOREIGN KEY (team_id) REFERENCES Teams(team_id));")
-cur.execute("CREATE TABLE Teammates(player_id integer, teammate_id integer, PRIMARY KEY (player_id, teammate_id), FOREIGN KEY (player_id) REFERENCES MLB_Players(player_id), FOREIGN KEY (teammate_id) REFERENCES MLB_Players(player_id));")
-
-con.commit()  # Commit the transaction to save the changes
+populate_database()
