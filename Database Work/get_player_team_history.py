@@ -59,7 +59,7 @@ def get_team_history(player_id):
     return team_history
 
 
-def get_teammates_by_team_history(team_history, teammates):
+def get_teammates_by_team_history(team_history, teammates, cursor):
     """
     Get an MLB player's teammates given a team_history, which contains team name, team ID, start date, and end date
     Returns a set of unique player names for which the player played with in his career.
@@ -79,10 +79,21 @@ def get_teammates_by_team_history(team_history, teammates):
         for date in date_range:
             team_roster = get_daily_active_roster_as_set(team_id, date, teammates)
             for player in team_roster:
+                new_teammates = team_roster.difference(teammates[player])
+                update_player_teammates(date, player, new_teammates, cursor)
                 new = teammates[player].union(team_roster)
                 teammates[player] = new
-        print(teammates)
     return teammates
+
+def update_player_teammates(date, player_name, teammates_to_add, cursor):
+    player_query = (player_name, date.year)
+    player_id = get_player_id(player_query)
+    for teammate in teammates_to_add:
+        player_query = (teammate, date.year)
+        teammate_id = get_player_id(player_query)
+        cursor.execute ("INSERT INTO Teammates (player_id, teammate_id) VALUES (%s, %s)", (player_id, teammate_id))
+        con.commit()
+
 
 def get_player_id(name_query):
     player_return = statsapi.lookup_player(name_query[0], gameType="R", season=name_query[1], sportId=1)
@@ -95,6 +106,7 @@ def get_player_id(name_query):
             print("Player at index", index, " : ", entry)
         index_entry = int(input(("Type the index of the player you want:")))
         return player_return[index_entry]['id']
+
 
 def get_daily_active_roster_as_set(team_id, date, teammates, cursor):
     team_roster = set()
@@ -119,7 +131,8 @@ def get_daily_active_roster_as_set(team_id, date, teammates, cursor):
                     teammates[player_string] = set()
                     player_query = (player_string, date.year)
                     player_id = get_player_id(player_query)
-                    cursor.execute("INSERT into MLB_Players (player_id, name, position, number) VALUES (player_id, player_string, player_position, player_number)")
+                    cursor.execute("INSERT INTO MLB_Players (player_id, name, position, number) VALUES (%s, %s, %s, %s)", (player_id, player_string, player_position, player_number))
+                    con.commit()
                     print("Added", player_id, player_string, player_position, player_number, "to the database")
     return team_roster
             
@@ -141,7 +154,7 @@ def fill_teammates_for_season(opening_day, last_day, teammates, players_checked,
                )
                 id = get_player_id(player_query)
                 team_history = get_team_history(id)
-                teammates = get_teammates_by_team_history(team_history, teammates)
+                teammates = get_teammates_by_team_history(team_history, teammates, cursor)
                 print("Finished", player, "at ", datetime.datetime.now())
     return teammates, players_checked
 
@@ -168,4 +181,7 @@ user= os.getenv('POSTGRES_USER')
 password = os.getenv('POSTGRES_PASSWORD')
 con = psycopg2.connect(user=user, password=password)
 cur = con.cursor()
-get_daily_active_roster_as_set(147,datetime.datetime.now(), {}, cur)
+new_teammates = ('Aaron Judge', 'Alex Verdugo', 'Anthony Volpe', 'Austin Wells')
+player = "Ben Rice"
+update_player_teammates(datetime.datetime.now(), player, new_teammates, cur)
+con.commit()
