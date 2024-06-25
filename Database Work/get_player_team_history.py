@@ -96,32 +96,41 @@ def get_player_id(name_query):
         index_entry = int(input(("Type the index of the player you want:")))
         return player_return[index_entry]['id']
 
-def get_daily_active_roster_as_set(team_id, date, teammates):
+def get_daily_active_roster_as_set(team_id, date, teammates, cursor):
     team_roster = set()
     formatted_date = date.strftime("%m/%d/%Y")
     roster = (statsapi.roster(team_id, date=formatted_date, rosterType="active"))
     roster = roster.split()
     x = 2
+    print(roster)
     while x < len(roster):
         if x + 2 < len(roster) and '#' not in roster[x + 2]:
             player_string = roster[x] + " " + roster[x+1] +  " " + roster[x+2]
+            player_position = roster[x - 1]
+            player_number = roster[x-2]
             x += 5
         else:
             player_string = roster[x] + " " + roster[x+1]
+            player_position = roster[x - 1]
+            player_number = roster[x-2]
             x += 4
         team_roster.add(player_string)
         if player_string not in teammates.keys():
                     teammates[player_string] = set()
+                    player_query = (player_string, date.year)
+                    player_id = get_player_id(player_query)
+                    cursor.execute("INSERT into MLB_Players (player_id, name, position, number) VALUES (player_id, player_string, player_position, player_number)")
+                    print("Added", player_id, player_string, player_position, player_number, "to the database")
     return team_roster
             
 
-def fill_teammates_for_season(opening_day, last_day, teammates, players_checked):
+def fill_teammates_for_season(opening_day, last_day, teammates, players_checked, cursor):
     date_range = [opening_day + datetime.timedelta(days = x) for x in range((last_day - opening_day).days + 1)]
     team_ids = get_team_ids()
     for date in date_range:
         for team_id in team_ids:
            print("Checking", team_id, "on ", date, "at ", datetime.datetime.now())
-           daily_roster = get_daily_active_roster_as_set(team_id, date, teammates)
+           daily_roster = get_daily_active_roster_as_set(team_id, date, teammates, cursor)
            for player in daily_roster:
                if player not in players_checked:
                 players_checked.add(player)
@@ -136,7 +145,7 @@ def fill_teammates_for_season(opening_day, last_day, teammates, players_checked)
                 print("Finished", player, "at ", datetime.datetime.now())
     return teammates, players_checked
 
-def populate_database ():
+def populate_database (cur):
     load_dotenv()
     user= os.getenv('POSTGRES_USER')
     password = os.getenv('POSTGRES_PASSWORD')
@@ -144,12 +153,19 @@ def populate_database ():
     cur = con.cursor()
     season = 2024
     while season > 1989:
-        cur.execute("SELECT start_date,end_date from valid_season_dates WHERE year = %s", (year,))
+        cur.execute("SELECT start_date,end_date from valid_season_dates WHERE year = %s", (season,))
         valid_dates = cur.fetchall() 
         opening_day = valid_dates[0][0]
         last_day = valid_dates[0][1]
+        cur.execute("SELECT name from ")
         fill_teammates_for_season(opening_day, last_day)
         season -= 1
     con.commit()  # Commit the transaction to save the changes\
 
-populate_database()
+#populate_database()
+load_dotenv()
+user= os.getenv('POSTGRES_USER')
+password = os.getenv('POSTGRES_PASSWORD')
+con = psycopg2.connect(user=user, password=password)
+cur = con.cursor()
+get_daily_active_roster_as_set(147,datetime.datetime.now(), {}, cur)
