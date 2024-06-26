@@ -113,8 +113,20 @@ def get_daily_active_roster_as_set(team_id, date, teammates, cursor):
     formatted_date = date.strftime("%m/%d/%Y")
     roster = (statsapi.roster(team_id, date=formatted_date, rosterType="active"))
     roster = roster.split()
+    team_string = team_id + "-" + date.year()
+
+    cursor.execute("INSERT INTO Teams (team_name) VALUES (%s) ON CONFLICT (team_name) DO NOTHING RETURNING team_id;", (team_string,))
+    generated_team_id = cursor.fetchone()
+    # If no team_id was returned, select the existing team_id
+    if generated_team_id is None:
+        cursor.execute("SELECT team_id FROM Teams WHERE team_name = %s;", (team_string,))
+        generated_team_id = cursor.fetchone()[0]
+    else:
+        generated_team_id = generated_team_id[0]
+    print("Added", team_string, "to the Teams database")
+    con.commit()
+
     x = 2
-    print(roster)
     while x < len(roster):
         if x + 2 < len(roster) and '#' not in roster[x + 2]:
             player_string = roster[x] + " " + roster[x+1] +  " " + roster[x+2]
@@ -133,6 +145,8 @@ def get_daily_active_roster_as_set(team_id, date, teammates, cursor):
                     player_id = get_player_id(player_query)
                     cursor.execute("INSERT INTO MLB_Players (player_id, name, position, number) VALUES (%s, %s, %s, %s)", (player_id, player_string, player_position, player_number))
                     con.commit()
+                    cur.execute("INSERT INTO Player_Team_Join (player_id, team_id, start_date, end_date) VALUES (%s, %s, %s, %s) ON CONFLICT (player_id, team_id) DO UPDATE SET end_date = EXCLUDED.end_date;", (player_id, team_id, date, date))
+                    print("Added", player_id, player_string, "played on ", team_id, "on", date, "to the database")
                     print("Added", player_id, player_string, player_position, player_number, "to the database")
     return team_roster
             
@@ -181,7 +195,12 @@ user= os.getenv('POSTGRES_USER')
 password = os.getenv('POSTGRES_PASSWORD')
 con = psycopg2.connect(user=user, password=password)
 cur = con.cursor()
-new_teammates = ('Aaron Judge', 'Alex Verdugo', 'Anthony Volpe', 'Austin Wells')
-player = "Ben Rice"
-update_player_teammates(datetime.datetime.now(), player, new_teammates, cur)
+team_string = "147" + "-" + "2024"
+cur.execute("INSERT INTO Teams (team_name) VALUES (%s) ON CONFLICT (team_name) DO NOTHING RETURNING team_id;", (team_string,))
+generated_team_id = cur.fetchone()[0]
+player_id = 592450
+date = datetime.datetime.now()
+next_date= datetime.datetime(2024,6,26)
+cur.execute("INSERT INTO Player_Team_Join (player_id, team_id, start_date, end_date) VALUES (%s, %s, %s, %s) ON CONFLICT (player_id, team_id) DO UPDATE SET end_date = EXCLUDED.end_date;", (player_id, generated_team_id, date, date))
+cur.execute("INSERT INTO Player_Team_Join (player_id, team_id, start_date, end_date) VALUES (%s, %s, %s, %s) ON CONFLICT (player_id, team_id) DO UPDATE SET end_date = EXCLUDED.end_date;", (player_id, generated_team_id, next_date, next_date))
 con.commit()
