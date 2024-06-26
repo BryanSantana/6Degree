@@ -172,35 +172,22 @@ def fill_teammates_for_season(opening_day, last_day, teammates, players_checked,
                 print("Finished", player, "at ", datetime.datetime.now())
     return teammates, players_checked
 
-def populate_database (cur):
+def populate_database ():
     load_dotenv()
     user= os.getenv('POSTGRES_USER')
     password = os.getenv('POSTGRES_PASSWORD')
     con = psycopg2.connect(user=user, password=password)
     cur = con.cursor()
     season = 2024
+    teammates = {}
+    players_checked = set()
     while season > 1989:
         cur.execute("SELECT start_date,end_date from valid_season_dates WHERE year = %s", (season,))
         valid_dates = cur.fetchall() 
         opening_day = valid_dates[0][0]
         last_day = valid_dates[0][1]
-        cur.execute("SELECT name from ")
-        fill_teammates_for_season(opening_day, last_day)
+        fill_teammates_for_season(opening_day, last_day,teammates, players_checked, cur)
         season -= 1
     con.commit()  # Commit the transaction to save the changes\
 
-#populate_database()
-load_dotenv()
-user= os.getenv('POSTGRES_USER')
-password = os.getenv('POSTGRES_PASSWORD')
-con = psycopg2.connect(user=user, password=password)
-cur = con.cursor()
-team_string = "147" + "-" + "2024"
-cur.execute("INSERT INTO Teams (team_name) VALUES (%s) ON CONFLICT (team_name) DO NOTHING RETURNING team_id;", (team_string,))
-generated_team_id = cur.fetchone()[0]
-player_id = 592450
-date = datetime.datetime.now()
-next_date= datetime.datetime(2024,6,26)
-cur.execute("INSERT INTO Player_Team_Join (player_id, team_id, start_date, end_date) VALUES (%s, %s, %s, %s) ON CONFLICT (player_id, team_id) DO UPDATE SET end_date = EXCLUDED.end_date;", (player_id, generated_team_id, date, date))
-cur.execute("INSERT INTO Player_Team_Join (player_id, team_id, start_date, end_date) VALUES (%s, %s, %s, %s) ON CONFLICT (player_id, team_id) DO UPDATE SET end_date = EXCLUDED.end_date;", (player_id, generated_team_id, next_date, next_date))
-con.commit()
+populate_database()
