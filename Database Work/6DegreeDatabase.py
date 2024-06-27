@@ -77,14 +77,14 @@ def get_teammates_by_team_history(team_history, teammates, cursor, con):
             year, month, date = entry[3].split("-")
             end_date = datetime.date(int(year), int(month), int(day))
             #Make sure the end date is a valid last_day, otherwise format to be that year's last day
-            opening_day, last_day = get_valid_dates(year)
+            opening_day, last_day = get_valid_dates(year, cursor)
             #Example, november or december would get rounded back to the last_day of the season
             if end_date > last_day:
                 end_date = last_day
             #Example, if a player was cut in february but the season starts in april, round it back to the last_day of the last season
             elif end_date < opening_day:
-              opening_day, last_day = get_valid_dates(year - 1)
-              end_date = cursor.fetchone()[0]    
+              opening_day, last_day = get_valid_dates(year - 1, cursor)
+              end_date = last_day    
         else:
             end_date = datetime.date.today()
         
@@ -275,10 +275,10 @@ def populate_database ():
         fill_teammates_for_season(opening_day, last_day,teammates, players_checked, cur, con)
         print(season,"Season Done")
         season -= 1
-    con.commit()  # Commit the transaction to save the changes\
+    con.commit()  # Commit the transaction to save the changes
 
-#populate_database()
-load_dotenv()
+populate_database()
+#load_dotenv()
 #user= os.getenv('POSTGRES_USER')
 #password = os.getenv('POSTGRES_PASSWORD')
 #con = psycopg2.connect(user=user, password=password)
