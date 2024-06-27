@@ -65,18 +65,40 @@ def get_teammates_by_team_history(team_history, teammates, cursor, con):
     #For each team stint the player's been on
     for entry in team_history:
         team_id = entry[1]
-        year, month, date = entry[2].split("-")
-        start_date = datetime.datetime(int(year), int(month), int(date))
+        #Extract the start date on the team
+        year, month, day = entry[2].split("-")
+        start_date = datetime.datetime(int(year), int(month), int(day))
+        #Make sure start date is a valid in-season date, otherwise format it to be that year's opening day
+        cursor.execute("SELECT start_date from valid_season_dates WHERE year = %s", (year,))
+        opening_day = cursor.fetchone()[0] 
+        if start_date < opening_day:
+            start_date = opening_day
         if entry[3]:
+            #Extract the end date on the team if it exists (otherwise the player is still on the team)
             year, month, date = entry[3].split("-")
-            end_date = datetime.datetime(int(year), int(month), int(date))
+            end_date = datetime.datetime(int(year), int(month), int(day))
+            #Make sure the end date is a valid last_day, otherwise format to be that year's last day
+            cursor.execute("SELECT start_date, end_date from valid_season_dates WHERE year = %s", (year,))
+            valid_dates = cursor.fetchall() 
+            opening_day = valid_dates[0][0]
+            last_day = valid_dates[0][1]
+            #Example, november or december would get rounded back to the last_day of the season
+            if end_date > last_day:
+                end_date = last_day
+            #Example, if a player was cut in february but the season ends starts in april, round it back to the last_day of the last season
+            elif end_date < opening_day:
+              cursor.execute("SELECT start_date, end_date from valid_season_dates WHERE year = %s", (year - 1,))
+              end_date = cursor.fetchone()[0]    
         else:
             end_date = datetime.datetime.now()
+        
+        #Create the date range to iterate over
         date_range = [start_date + datetime.timedelta(days=x) for x in range((end_date-start_date).days + 1)]
 
         for date in date_range:
             team_roster = get_daily_active_roster_as_set(team_id, date, teammates, cursor, con)
             for player in team_roster:
+                #New teammates will be those in team_roster that aren't already in teammates[player]
                 new_teammates = team_roster.difference(teammates[player])
                 update_player_teammates(date, player, new_teammates, cursor, con)
                 new = teammates[player].union(team_roster)
@@ -84,6 +106,9 @@ def get_teammates_by_team_history(team_history, teammates, cursor, con):
     return teammates
 
 def update_player_teammates(date, player_name, teammates_to_add, cursor, con):
+    """
+    Updates the player to teammate relationship in the Teammates database. 
+    """
     player_query = (player_name, date.year)
     player_id = get_player_id(player_query)
     if player_id:
@@ -96,21 +121,32 @@ def update_player_teammates(date, player_name, teammates_to_add, cursor, con):
 
 
 def get_player_id(name_query):
+    """
+    Gets a player ID based on a query containing the name and the year. If multiple players with the same name arise, it'll prompt the user to make a choice.
+    """
     player_return = statsapi.lookup_player(name_query[0], gameType="R", season=name_query[1], sportId=1)
     if len(player_return) == 0:
+        print("Failed to find", name_query)
         return None
     #If only one unique player is returned from the query
     elif len(player_return) == 1:
         return player_return[0]['id']
     #If multiple players are returned by the query, ie same name, have the user manually select which one they want
     else:
-        for index, entry in enumerate(player_return):
-            print("Player at index", index, " : ", entry)
-        index_entry = int(input(("Type the index of the player you want: (looking for: )", name_query)))
+        if player_return[0]['fullName'] == player_return[1]['fullName']:
+            for index, entry in enumerate(player_return):
+                print("Player at index", index, " : ", entry)
+            index_entry = int(input(("Type the index of the player you want: (looking for: )", name_query)))
+        else:
+            index_entry = 0
         return player_return[index_entry]['id']
 
 
 def get_daily_active_roster_as_set(team_id, date, teammates, cursor, con):
+    """
+    Pass in a team_id, date, the teammates dictionary, the cursor, and the connection to the database, and this function will
+    update the new players into the Players table and return the daily active roster for processing in another function 
+    """
     team_roster = set()
     formatted_date = date.strftime("%m/%d/%Y")
     roster = (statsapi.roster(team_id, date=formatted_date, rosterType="active"))
@@ -127,33 +163,60 @@ def get_daily_active_roster_as_set(team_id, date, teammates, cursor, con):
             player_position = roster[x - 1]
             player_number = roster[x-2]
             x += 4
-        team_roster.add(player_string)
         if player_string not in teammates.keys():
-                    teammates[player_string] = set()
                     player_query = (player_string, date.year)
                     player_id = get_player_id(player_query)
                     if player_id:
+                        table_team_id = add_team_to_teams_table(team_id, date, cursor, con)
+                        cursor.execute("""
+                        INSERT INTO Player_Team_Join (player_id, team_id, start_date, end_date) 
+                        VALUES (%s, %s, %s, %s) 
+                        ON CONFLICT (player_id, team_id) 
+                        DO UPDATE SET 
+                        end_date = CASE 
+                        WHEN EXCLUDED.end_date > Player_Team_Join.end_date THEN EXCLUDED.end_date 
+                         ELSE Player_Team_Join.end_date 
+                        END,
+                        start_date = CASE 
+                        WHEN EXCLUDED.start_date < Player_Team_Join.start_date THEN EXCLUDED.start_date 
+                        ELSE Player_Team_Join.start_date 
+                        END;
+                        """, (player_id, table_team_id, date, date))
+                        print("Added", player_id, player_string, "played on ", table_team_id, "on", date, "to the database")
+                        teammates[player_string] = set()
+                        team_roster.add(player_string)
                         cursor.execute("INSERT INTO MLB_Players (player_id, name, position, number) VALUES (%s, %s, %s, %s) ON CONFLICT DO NOTHING", (player_id, player_string, player_position, player_number))
                         con.commit()
                         print("Added", player_id, player_string, player_position, player_number, "to the database")
     return team_roster
-            
+
+def add_team_to_teams_table(team_id, date, cursor, con):
+    """
+    Adds a team to the team table by constructing the team_name
+    """
+    team_string = str(team_id) + "-" + str(date.year)
+    cursor.execute("INSERT INTO Teams (team_name) VALUES (%s) ON CONFLICT (team_name) DO NOTHING RETURNING team_id;", (team_string,))
+    generated_team_id = cursor.fetchone()
+    # If no team_id was returned, select the existing team_id
+    if generated_team_id is None:
+        cursor.execute("SELECT team_id FROM Teams WHERE team_name = %s;", (team_string,))
+        con.commit()
+        generated_team_id = cursor.fetchone()[0]
+    else:
+        generated_team_id = generated_team_id[0]
+    return generated_team_id
 
 def fill_teammates_for_season(opening_day, last_day, teammates, players_checked, cursor, con):
+    """
+    Given valid season date parameters (parsed from valid_season_dates table) this function will fill in all 4 tables
+    for a given season by calling other functions, it will also return a teammate dictionary as well as a set of players_checked 
+    """
     date_range = [opening_day + datetime.timedelta(days = x) for x in range((last_day - opening_day).days + 1)]
     team_ids = get_team_ids()
     for date in date_range:
         for team_id in team_ids:
-            team_string = str(team_id) + "-" + str(date.year)
-            cursor.execute("INSERT INTO Teams (team_name) VALUES (%s) ON CONFLICT (team_name) DO NOTHING RETURNING team_id;", (team_string,))
-            generated_team_id = cursor.fetchone()
-        # If no team_id was returned, select the existing team_id
-            if generated_team_id is None:
-                cursor.execute("SELECT team_id FROM Teams WHERE team_name = %s;", (team_string,))
-                generated_team_id = cursor.fetchone()[0]
-            else:
-                generated_team_id = generated_team_id[0]
-            print("Added", team_string, "to the Teams database")
+            generated_team_id = add_team_to_teams_table(team_id, date, cursor, con)
+            print("Added", generated_team_id, "to the Teams database")
             con.commit()
             print("Checking", team_id, "on ", date, "at ", datetime.datetime.now())
             daily_roster = get_daily_active_roster_as_set(team_id, date, teammates, cursor, con)
@@ -167,7 +230,20 @@ def fill_teammates_for_season(opening_day, last_day, teammates, players_checked,
                 )
                     player_id = get_player_id(player_query)
                     if player_id:
-                        cursor.execute("INSERT INTO Player_Team_Join (player_id, team_id, start_date, end_date) VALUES (%s, %s, %s, %s) ON CONFLICT (player_id, team_id) DO UPDATE SET end_date = EXCLUDED.end_date;", (player_id, generated_team_id, date, date))
+                        cursor.execute("""
+                        INSERT INTO Player_Team_Join (player_id, team_id, start_date, end_date) 
+                        VALUES (%s, %s, %s, %s) 
+                        ON CONFLICT (player_id, team_id) 
+                        DO UPDATE SET 
+                        end_date = CASE 
+                        WHEN EXCLUDED.end_date > Player_Team_Join.end_date THEN EXCLUDED.end_date 
+                         ELSE Player_Team_Join.end_date 
+                        END,
+                        start_date = CASE 
+                        WHEN EXCLUDED.start_date < Player_Team_Join.start_date THEN EXCLUDED.start_date 
+                        ELSE Player_Team_Join.start_date 
+                        END;
+                        """, (player_id, generated_team_id, date, date))
                         print("Added", player_id, player, "played on ", generated_team_id, "on", date, "to the database")
                         team_history = get_team_history(player_id)
                         teammates = get_teammates_by_team_history(team_history, teammates, cursor, con)
@@ -189,9 +265,7 @@ def populate_database ():
         opening_day = valid_dates[0][0]
         last_day = valid_dates[0][1]
         fill_teammates_for_season(opening_day, last_day,teammates, players_checked, cur, con)
+        print(season,"Season Done")
         season -= 1
     con.commit()  # Commit the transaction to save the changes\
-#populate_database()
-
-#query = ("Zach Jackson", 2024)
-#print(get_player_id(query))
+populate_database()
