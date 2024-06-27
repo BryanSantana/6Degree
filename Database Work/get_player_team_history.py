@@ -67,7 +67,7 @@ def get_teammates_by_team_history(team_history, teammates, cursor, con):
         team_id = entry[1]
         #Extract the start date on the team
         year, month, day = entry[2].split("-")
-        start_date = datetime.datetime(int(year), int(month), int(day))
+        start_date = datetime.date(int(year), int(month), int(day))
         #Make sure start date is a valid in-season date, otherwise format it to be that year's opening day
         cursor.execute("SELECT start_date from valid_season_dates WHERE year = %s", (year,))
         opening_day = cursor.fetchone()[0] 
@@ -76,7 +76,7 @@ def get_teammates_by_team_history(team_history, teammates, cursor, con):
         if entry[3]:
             #Extract the end date on the team if it exists (otherwise the player is still on the team)
             year, month, date = entry[3].split("-")
-            end_date = datetime.datetime(int(year), int(month), int(day))
+            end_date = datetime.date(int(year), int(month), int(day))
             #Make sure the end date is a valid last_day, otherwise format to be that year's last day
             cursor.execute("SELECT start_date, end_date from valid_season_dates WHERE year = %s", (year,))
             valid_dates = cursor.fetchall() 
@@ -90,7 +90,7 @@ def get_teammates_by_team_history(team_history, teammates, cursor, con):
               cursor.execute("SELECT start_date, end_date from valid_season_dates WHERE year = %s", (year - 1,))
               end_date = cursor.fetchone()[0]    
         else:
-            end_date = datetime.datetime.now()
+            end_date = datetime.date.today()
         
         #Create the date range to iterate over
         date_range = [start_date + datetime.timedelta(days=x) for x in range((end_date-start_date).days + 1)]
@@ -268,4 +268,15 @@ def populate_database ():
         print(season,"Season Done")
         season -= 1
     con.commit()  # Commit the transaction to save the changes\
+
 populate_database()
+#load_dotenv()
+#user= os.getenv('POSTGRES_USER')
+#password = os.getenv('POSTGRES_PASSWORD')
+#con = psycopg2.connect(user=user, password=password)
+#cur = con.cursor()
+#cur.execute("Delete from player_team_join")
+#cur.execute("Delete from teammates")
+#cur.execute("Delete from teams")
+#cur.execute("Delete from MLB_Players")
+#cur.execute("ALTER SEQUENCE teams_team_id_seq RESTART")
