@@ -42,9 +42,9 @@ def get_team_history(player_id):
     team_history = []
     
     team_ids = get_team_ids()
-    
+
     for entry in roster_entries:
-        if entry['team']['id'] in team_ids:
+        if entry['team']['id'] in team_ids and entry['isActive'] == True:
             team_entry = (
                 entry['team']['name'],        # Team Name
                 entry['team']['id'],          # Team ID
@@ -277,7 +277,7 @@ def populate_database ():
         season -= 1
     con.commit()  # Commit the transaction to save the changes
 
-populate_database()
+#populate_database()
 #load_dotenv()
 #user= os.getenv('POSTGRES_USER')
 #password = os.getenv('POSTGRES_PASSWORD')
