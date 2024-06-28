@@ -148,11 +148,9 @@ def populate_database ():
     con = psycopg2.connect(user=user, password=password)
     cur = con.cursor()
     season = 2024
-    teammates = {}
-    players_checked = set()
     while season > 1989:
         opening_day, last_day = get_valid_dates(season, cur)
-        fill_teammates_for_season(opening_day, last_day,teammates, players_checked, cur, con)
+        fill_teammates_for_season(opening_day, last_day, cur, con)
         print(season,"Season Done")
         season -= 1
     con.commit()  # Commit the transaction to save the changes
