@@ -39,7 +39,7 @@ def get_player_id(name_query, cursor, con):
     """
     Gets a player ID based on a query containing the name and the year. If multiple players with the same name arise, it'll prompt the user to make a choice.
     """
-    query_as_string= str(name_query[0]) + str(name_query[1]) + str(name_query[2])
+    query_as_string= str(name_query[0]) + "-" + str(name_query[1]) + "-" + str(name_query[2])
     player_return = statsapi.lookup_player(name_query[0], gameType="R", season=name_query[1], sportId=1)
     if len(player_return) == 0:
         print("Failed to find", name_query)
@@ -50,14 +50,16 @@ def get_player_id(name_query, cursor, con):
     #If multiple players are returned by the query, ie same name, have the user manually select which one they want
     else:
         if player_return[0]['fullName'] == player_return[1]['fullName']:
-            cursor.execute("Select choice from tiebreaker where player_query = (%s)", (query_as_string))
-            index_entry = cur.fetchone()
+            cursor.execute("Select choice from tiebreaker where player_query = %s", (query_as_string,))
+            index_entry = cursor.fetchone()
             if not index_entry:
                 for index, entry in enumerate(player_return):
                     print("Player at index", index, " : ", entry)
                 index_entry = int(input(("Type the index of the player you want: (looking for: )", query_as_string)))
                 cursor.execute("Insert into tiebreaker (player_query, choice) VALUES (%s, %s)", (query_as_string, index))
                 con.commit()
+            else:
+                index_entry = index_entry[0]
         else:
             index_entry = 0
         return player_return[index_entry]['id']
@@ -139,7 +141,7 @@ def fill_teammates_for_season(opening_day, last_day, cursor, con):
             print("Added", generated_team_id, "to the Teams database")
             con.commit()
             print("Checking", team_id, "on ", date, "at ", datetime.datetime.now())
-            daily_roster = update_daily_active_roster_to_database(team_id, date, cursor, con)
+            update_daily_active_roster_to_database(team_id, date, cursor, con)
 
 def populate_database ():
     load_dotenv()
@@ -156,6 +158,9 @@ def populate_database ():
     con.commit()  # Commit the transaction to save the changes
 
 populate_database()
+#name_query=("Bryan Santana", 2024, 135)
+#query_as_string= str(name_query[0]) + "-" + str(name_query[1]) + "-" + str(name_query[2])
+#print(query_as_string)
 #load_dotenv()
 #user= os.getenv('POSTGRES_USER')
 #password = os.getenv('POSTGRES_PASSWORD')
